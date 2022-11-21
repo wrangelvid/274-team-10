@@ -61,10 +61,12 @@ rB = rA + l2*er2hat;
 rC1 =     - lfb0*er1hat;
 rC2 = rC1 + lfb1*er2hat;
 rC3 = rB  + lfb1*er2hat;
-rD1 = rB - d1*er2hat;
-rD2 = rB + d2*er3hat;
-rD3 = rD2 + d3*rotz( 90)*er3hat;
-rD4 = rD2 + d3*rotz(-90)*er3hat;
+rS0 = rB - d1*er2hat;
+rS1 = rS0 + d3*rotz( 90)*er2hat;
+rS2 = rS0 + d3*rotz(-90)*er2hat;
+rT0 = rB + d2*er3hat;
+rT1 = rT0 + d3*rotz( 90)*er3hat;
+rT2 = rT0 + d3*rotz(-90)*er3hat;
 rE = rB + l3*er3hat;
 
 drE = ddt(rE);
@@ -109,8 +111,8 @@ Tfb2 = 1/2*mfb2*magsq(drmfb2) + 1/2*Ifb2*dth1^2;
 T1r = (1/2)*Ir*(N*dth1)^2;
 T2r = (1/2)*Ir*(dth1 + N*dth2)^2;
 
-Vsp1 = 1/2*k*(norm(rD3-rD1)-lsp0)^2;
-Vsp2 = 1/2*k*(norm(rD4-rD1)-lsp0)^2;
+Vsp1 = 1/2*k*(norm(rT1-rS1)-lsp0)^2;
+Vsp2 = 1/2*k*(norm(rT2-rS2)-lsp0)^2;
 
 T = simplify(T1 + T2 + T3 + Tfb1 + Tfb2 + T1r + T2r);
 V = Vsp1 + Vsp2;
@@ -119,7 +121,7 @@ Q_tau2 = M2Q(tau2*khat,dth2*khat);
 Q = Q_tau1 + Q_tau2;
 
 % Assemble the array of cartesian coordinates of the key points
-keypoints = [rA rB rC1 rC2 rC3 rD1 rD2 rD3 rD4 rE];
+keypoints = [rA rB rC1 rC2 rC3 rS0 rS1 rS2 rT0 rT1 rT2 rE];
 keypoints = keypoints(1:2, :);
 
 % Derive Energy Function and Equations of Motion

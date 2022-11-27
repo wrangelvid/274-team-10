@@ -7,7 +7,7 @@
 #include "MotorShield.h" 
 #include "HardwareSetup.h"
 
-#define NUM_INPUTS 8
+#define NUM_INPUTS 9
 #define NUM_OUTPUTS 11
 
 #define PULSE_TO_RAD (2.0f*3.14159f / 1200.0f)
@@ -51,6 +51,7 @@ float motor2_activate;
 float current_control_period_us = 200.0f;     // 5kHz current control loop
 float impedance_control_period_us = 1000.0f;  // 1kHz impedance control loop
 float start_period, traj_period, end_period;
+float release_time;
 
 // Control parameters
 float current_Kp = 4.0f;         
@@ -144,8 +145,9 @@ int main(void) {
 
             motor1_activate             = input_params[5];
             motor2_activate             = input_params[6];
+            release_time                = input_params[7];
 
-            duty_max                    = input_params[7];   // Maximum duty factor
+            duty_max                    = input_params[8];   // Maximum duty factor
             
             // Attach current loop interrupt
             currentLoop.attach_us(CurrentLoop,current_control_period_us);
@@ -160,6 +162,7 @@ int main(void) {
 
             motorShield.motorAWrite(0, 0); //turn motor A off
             motorShield.motorBWrite(0, 0); //turn motor B off
+            motorShield.motorDWrite(0, 0);
                          
             // Run experiment
             while( t.read() < start_period + traj_period + end_period) { 
@@ -168,6 +171,8 @@ int main(void) {
 
                 current_des1 = (t.read() > start_period + motor1_activate) ? 100 : 0;
                 current_des2 = (t.read() > start_period + motor2_activate) ? 100 : 0;
+
+                motorShield.motorDWrite((t.read() > start_period + release_time) ? 0 : 1.0, 0);
                 
                 // Form output to send to MATLAB     
                 float output_data[NUM_OUTPUTS];
@@ -197,6 +202,7 @@ int main(void) {
             currentLoop.detach();
             motorShield.motorAWrite(0, 0); //turn motor A off
             motorShield.motorBWrite(0, 0); //turn motor B off
+            motorShield.motorDWrite(0, 0);
         
         } // end if
         

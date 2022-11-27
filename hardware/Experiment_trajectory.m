@@ -1,4 +1,4 @@
-function output_data = Experiment_trajectory( angle1_init, angle2_init, traj_time, pre_buffer_time, post_buffer_time, motor1_act_time, motor2_act_time, duty_max)
+function output_data = Experiment_trajectory( angle1_init, angle2_init, traj_time, pre_buffer_time, post_buffer_time, motor1_act_time, motor2_act_time, release_time, duty_max)
     
     % Figure for plotting motor data
     figure(1);  clf;       
@@ -55,33 +55,6 @@ function output_data = Experiment_trajectory( angle1_init, angle2_init, traj_tim
     h25.XData = []; h25.YData = [];
     ylabel('Duty Cycle 2');
     
-%     % Figure for plotting state of the leg
-%     figure(2)
-%     clf
-%     hold on
-%     axis equal
-%     axis([-.25 .25 -.25 .1]);
-%    
-%     h_OB = plot([0],[0],'LineWidth',2);
-%     h_AC = plot([0],[0],'LineWidth',2);
-%     h_BD = plot([0],[0],'LineWidth',2);
-%     h_CE = plot([0],[0],'LineWidth',2);
-%     
-%     h_foot= plot([0],[0],'k');
-%     h_des = plot([0],[0],'k--');
-%     h_des.XData=[];
-%     h_des.YData=[];
-%     h_foot.XData=[];
-%     h_foot.YData=[];
-%     
-%     % Define leg length parameters
-%     l_OA = 0.011; 
-%     l_OB = 0.042; 
-%     l_AC = 0.096; 
-%     l_DE = 0.091;
-% 
-%     p   = [l_OA l_OB l_AC l_DE]';
-%     
     % This function will get called any time there is new data from
     % the Nucleo board. Data comes in blocks, rather than one at a time.
     function my_callback(new_data)
@@ -138,7 +111,7 @@ function output_data = Experiment_trajectory( angle1_init, angle2_init, traj_tim
     % Specify inputs
     input = [start_period traj_time end_period];
     input = [input angle1_init angle2_init];
-    input = [input motor1_act_time motor2_act_time];
+    input = [input motor1_act_time motor2_act_time release_time];
     input = [input duty_max];
     
     params.timeout  = (start_period+traj_time+end_period);  

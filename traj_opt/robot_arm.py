@@ -14,10 +14,42 @@ from pydrake.all import (
 )
 from typing import Union
 import numpy as np
+from sympy import symbols, simplify
+from sympy import cos as sy_sin
+from sympy import cos as sy_cos
+
+
 
 OptimizationType = Union[Expression, float, np.float64, AutoDiffXd]
 
 ArmState = namedview("ArmState", ["th1", "th2", "th3", "dth1", "dth2", "dth3"])
+
+def simplify_exp(exp:Expression)->Expression:
+    """Simplifies an Expression with sympy.
+
+    May take some while.    
+
+    Args:
+        exp: expression to simplify.
+    
+    Returns:
+        Simplified expression.
+    """
+    drake_variables = list(exp.GetVariables())
+    str_variables = [str(var) for var in drake_variables] 
+
+    sy_pow = lambda a,n: a**n
+
+    exec(",".join(str_variables) + "="+ f'symbols("{" ".join(str_variables)}")')
+
+    exp_str = exp.to_string()
+
+    simplified_str = str(simplify((eval(exp_str.replace('sin', 'sy_sin').replace('cos', 'sy_cos').replace('pow', 'sy_pow')))))
+    for i, var in enumerate(str_variables):
+        exec(var + f'= drake_variables[{i}]')
+    print(f'Gained: {round(100-100.*len(simplified_str)/float(len(exp_str)), 2)}%')
+    simplified_exp = eval(simplified_str)
+    return simplified_exp
 
 
 def M_del(M, row: int, col: int) -> np.array:
@@ -123,7 +155,7 @@ class ArmDynamics:
     The last joint is underactuated and it's stiffness is determined with k.
     """
 
-    def __init__(self, l1: float, l2: float, k: float = 4 * 30):
+    def __init__(self, l1: float, l2: float, k: float = 4 * 30, simplify:bool = True):
         """Builds the dynamics of the Arm.
 
         Args:
@@ -138,7 +170,7 @@ class ArmDynamics:
         self.wfb2 = 16e-3  # width of four bar link 2
         self.k = k  # N/m
         self.N = 18.75
-        self.lsp0 = 0.0253  # m
+        self.lsp0 = 0.033  # m 66 mm
 
         # joint-to-joint lengths
         self.l1 = l1
@@ -287,7 +319,10 @@ class ArmDynamics:
 
         # Endeffector Velocity
         self.drE = ddt(self.rE)
-        self.neg_speed = -sqrt(self.drE.T.dot(self.drE)[0][0])
+        self.speed = self.drE.T.dot(self.drE)[0][0]
+        if simplify:
+            self.speed = simplify_exp(self.speed)
+        self.neg_speed = -sqrt(self.speed)
         self.neg_speed_string = self.neg_speed.to_string()
 
         # aggergate inertial properites
@@ -334,19 +369,29 @@ class ArmDynamics:
         Vsp2 = 0.5 * self.k * (((self.rT2 - rS2_w_l0).T.dot(self.rT2 - rS2_w_l0)))
 
         self.T = T1 + T2 + T3 + Tfb1 + Tfb2 + T1r + T2r
+
         self.V = Vsp1 + Vsp2
+
         Q_tau1 = M2Q(self.tau1 * khat, self.dth1 * khat)
         Q_tau2 = M2Q(self.tau2 * khat, self.dth2 * khat)
         self.Q = Q_tau1 + Q_tau2
 
         # derive Energy functions and equations of motions
         self.E = self.T + self.V
+
         self.L = self.T - self.V
+
         self.eom = ddt(Jacobian(self.L, dq).T) - Jacobian(self.L, q).T - self.Q
         self.A = Jacobian(self.eom, ddq)
+        A_inv = inv3(self.A)
+
         self.b = self.A.dot(ddq) - self.eom
 
-        self.acc = inv3(self.A).dot(self.b)
+        self.acc = A_inv.dot(self.b)
+        if simplify:
+            for i in range(3):
+                self.acc[i][0] = simplify_exp(self.acc[i][0])
+
 
         # Get string of expresions for autodiff evaluations
         # need to do string substitutions to reduce number of operations
@@ -415,6 +460,7 @@ class ArmDynamics:
         Returns:
             The evaluated expressions.
         """
+        print('umba')
         s = ArmState(qv)
 
         if type(s.th1) is Expression:
@@ -550,12 +596,12 @@ class ArmDynamics:
             The evaluated derivatives.
         """
         s = ArmState(qv)
-        dqv = np.zeros(6)
+        dqv = [0]*6
 
         if type(s.th1) in [Expression, float, np.float64]:
             for i in range(3):
                 if fast_build:
-                    dqv[3 + i] = 0
+                    return dqv
                 else:
                     dqv[3 + i] = self.EvalExpression(self.acc[i][0], tau1, tau2)
             dqv[:3] = s[3:]

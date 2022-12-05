@@ -36,3 +36,4 @@ rho_fb2 = 1200*6e-3;
 d_shaft = 8e-3;
 wfb2 = 16e-3;
 k = 0;
+lsp0 = 28e-3;

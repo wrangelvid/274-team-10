@@ -13,7 +13,7 @@ syms I1A I1B I2A I2B I3 Ifb1 Ir real                    % moments of inertia (Iz
 syms l1 l2 l3 lfb0 lfb1 d1 d2 d3 real                   % joint-to-joint lengths
 syms lm1A lm1B lm2A lm2B lm3 lmfb1 real                 % CoM distances
 syms lb1A lb1B lb2A lb2B real                           % acrylic bar start/stop distances
-syms N lam_bars rho_fb2 k d_shaft wfb2 real             % other wacky parameters
+syms N lam_bars rho_fb2 k d_shaft wfb2 lsp0 real        % other wacky parameters
 
 % Group them
 q   = [  th1;   th2;   th3];                            % generalized coordinates
@@ -26,7 +26,7 @@ p   = [...                                              % parameters
     l1 l2 l3 lfb0 lfb1 d1 d2 d3 ...
     lm1A lm1B lm2A lm2B lm3 lmfb1 ...
     lb1A lb1B lb2A lb2B ...
-    N lam_bars rho_fb2 k d_shaft wfb2]';
+    N lam_bars rho_fb2 k d_shaft wfb2 lsp0]';
 
 % Pre-calculate additional properties
 bars1 = l1-lb1A-lb1B;
@@ -34,8 +34,6 @@ mbars1 = bars1*lam_bars;
 
 bars2 = l2-lb2A-lb2B;
 mbars2 = bars2*lam_bars;
-
-lsp0 = sqrt((d1+d2)^2 + d3^2);
 
 r_shaft = d_shaft/2;
 lfb2 = lfb0+l1;

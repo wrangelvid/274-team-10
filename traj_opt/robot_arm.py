@@ -15,23 +15,23 @@ from pydrake.all import (
 from typing import Union
 import numpy as np
 from sympy import symbols, simplify
-from sympy import cos as sy_sin
+from sympy import sin as sy_sin
 from sympy import cos as sy_cos
-
-
+from sympy import sqrt as sy_sqrt
 
 OptimizationType = Union[Expression, float, np.float64, AutoDiffXd]
 
 ArmState = namedview("ArmState", ["th1", "th2", "th3", "dth1", "dth2", "dth3"])
 
-def simplify_exp(exp:Expression)->Expression:
+def simplify_exp(exp:Expression, verbose:bool=False)->Expression:
     """Simplifies an Expression with sympy.
 
     May take some while.    
 
     Args:
         exp: expression to simplify.
-    
+        verbose: prints out how much percent we saved.
+  
     Returns:
         Simplified expression.
     """
@@ -44,10 +44,11 @@ def simplify_exp(exp:Expression)->Expression:
 
     exp_str = exp.to_string()
 
-    simplified_str = str(simplify((eval(exp_str.replace('sin', 'sy_sin').replace('cos', 'sy_cos').replace('pow', 'sy_pow')))))
+    simplified_str = str(simplify((eval(exp_str.replace('sin', 'sy_sin').replace('cos', 'sy_cos').replace('sqrt','sy_sqrt').replace('pow', 'sy_pow')))))
     for i, var in enumerate(str_variables):
         exec(var + f'= drake_variables[{i}]')
-    print(f'Gained: {round(100-100.*len(simplified_str)/float(len(exp_str)), 2)}%')
+    if verbose:
+        print(f'Saved: {round(100-100.*len(simplified_str)/float(len(exp_str)), 2)}%')
     simplified_exp = eval(simplified_str)
     return simplified_exp
 
@@ -155,13 +156,14 @@ class ArmDynamics:
     The last joint is underactuated and it's stiffness is determined with k.
     """
 
-    def __init__(self, l1: float, l2: float, k: float = 4 * 30, simplify:bool = True):
+    def __init__(self, l1: float, l2: float, k: float = 4 * 24, verbose:bool = False):
         """Builds the dynamics of the Arm.
 
         Args:
             l1: The joint to joint length of the first link.
             l2: The joint to joint length of the second link.
             k: The spring stiffness on either side of the wrist joint.
+            verbose: prints out simplificaiton informations and warnings.
         """
         self.lam_bars = 1200 * 2 * 6e-3 * 30e-3
         self.rho_fb2 = 1200 * 6e-3  # denisity of four bar link 2
@@ -170,7 +172,7 @@ class ArmDynamics:
         self.wfb2 = 16e-3  # width of four bar link 2
         self.k = k  # N/m
         self.N = 18.75
-        self.lsp0 = 0.033  # m 66 mm
+        self.lsp0 = 0.028  # m 28 mm
 
         # joint-to-joint lengths
         self.l1 = l1
@@ -180,7 +182,8 @@ class ArmDynamics:
         self.lfb1 = 25e-3
         self.lfb2 = self.lfb0 + self.l1
         self.d1 = 31e-3  # used for spring
-        self.d2 = 25e-3  # used for spring
+        #self.d2 = 60e-3  # used for spring
+        self.d2 = 25e-3
         self.d3 = 30e-3  # used for spring
 
         # moment of inertias (Izz)
@@ -188,6 +191,7 @@ class ArmDynamics:
         self.I1B = 24605e-9
         self.I2A = 26528e-9
         self.I2B = 24605e-9
+        #self.I3 = 55979e-9
         self.I3 = 65113e-9
         self.Ifb1 = 9115e-9
         self.Ifb2 = self.rho_fb2 * (
@@ -216,6 +220,7 @@ class ArmDynamics:
         self.m1B = 72.70e-3
         self.m2A = 78.68e-3
         self.m2B = 72.70e-3
+        #self.m3 = 119.88e-3
         self.m3 = 129.49e-3
         self.mfb1 = 27.37e-3
         self.mfb2 = (
@@ -274,13 +279,6 @@ class ArmDynamics:
         self.rS1 = self.rS0 + self.d3 * rotz(np.pi / 2).dot(er2hat)
         self.rS2 = self.rS0 + self.d3 * rotz(-np.pi / 2).dot(er2hat)
 
-        # pretend the spring is shorter for simplified computation
-        # there are funny numerical issues happening with the square root
-        # so it's better to do this here
-        rS0_w_l0 = self.rB - (self.d1 - self.lsp0) * er2hat
-        rS1_w_l0 = rS0_w_l0 + self.d3 * rotz(np.pi / 2).dot(er2hat)
-        rS2_w_l0 = rS0_w_l0 + self.d3 * rotz(-np.pi / 2).dot(er2hat)
-
         self.rT0 = self.rB + self.d2 * er3hat
         self.rT1 = self.rT0 + self.d3 * rotz(np.pi / 2).dot(er3hat)
         self.rT2 = self.rT0 + self.d3 * rotz(-np.pi / 2).dot(er3hat)
@@ -320,8 +318,8 @@ class ArmDynamics:
         # Endeffector Velocity
         self.drE = ddt(self.rE)
         self.speed = self.drE.T.dot(self.drE)[0][0]
-        if simplify:
-            self.speed = simplify_exp(self.speed)
+        self.speed = simplify_exp(self.speed, verbose)
+
         self.neg_speed = -sqrt(self.speed)
         self.neg_speed_string = self.neg_speed.to_string()
 
@@ -365,12 +363,15 @@ class ArmDynamics:
         T2r = 0.5 * self.Ir * (self.dth1 + self.N * self.dth2) ** 2
 
         # Potential Energies of the Springs.
-        Vsp1 = 0.5 * self.k * (((self.rT1 - rS1_w_l0).T.dot(self.rT1 - rS1_w_l0)))
-        Vsp2 = 0.5 * self.k * (((self.rT2 - rS2_w_l0).T.dot(self.rT2 - rS2_w_l0)))
+        # This requires simplification to be turned on 
+        Vsp1 = 0.5 * self.k * (sqrt((self.rT1 - self.rS1).T.dot(self.rT1 - self.rS1)[0][0]) - self.lsp0)**2
+        Vsp2 = 0.5 * self.k * (sqrt((self.rT2 - self.rS2).T.dot(self.rT2 - self.rS2)[0][0]) - self.lsp0)**2
 
         self.T = T1 + T2 + T3 + Tfb1 + Tfb2 + T1r + T2r
+        self.T[0,0] = simplify_exp(self.T[0,0], verbose)
 
-        self.V = Vsp1 + Vsp2
+        self.V = np.array([[Vsp1 + Vsp2]])
+        self.V[0,0] = simplify_exp(self.V[0,0], verbose)
 
         Q_tau1 = M2Q(self.tau1 * khat, self.dth1 * khat)
         Q_tau2 = M2Q(self.tau2 * khat, self.dth2 * khat)
@@ -380,68 +381,37 @@ class ArmDynamics:
         self.E = self.T + self.V
 
         self.L = self.T - self.V
+        self.L[0,0] = simplify_exp(self.L[0,0], verbose)
 
         self.eom = ddt(Jacobian(self.L, dq).T) - Jacobian(self.L, q).T - self.Q
+        for i in range(3):
+            self.eom[i,0] = simplify_exp(self.eom[i,0], verbose)
+
         self.A = Jacobian(self.eom, ddq)
         A_inv = inv3(self.A)
+        for i in range(3):
+            for j in range(3):
+                A_inv[i,j] = simplify_exp(A_inv[i,j], verbose)
 
         self.b = self.A.dot(ddq) - self.eom
 
-        self.acc = A_inv.dot(self.b)
-        if simplify:
-            for i in range(3):
-                self.acc[i][0] = simplify_exp(self.acc[i][0])
+        for i in range(3):
+            self.b[i,0] = simplify_exp(self.b[i,0], verbose)
 
+        self.acc = A_inv.dot(self.b)
+
+        # check if accelerations are valid.
+        for i in range(3):
+            if self.ddth1 in self.acc[i][0].GetVariables():
+                raise Exception('Invalid dynamics. Contain accelerations.')
 
         # Get string of expresions for autodiff evaluations
         # need to do string substitutions to reduce number of operations
-
-        self.th12 = "th1 + th2"
-        self.th13 = "th1 + th3"
-        self.th23 = "th2 + th3"
-        self.th123 = "th1 + th2 + th3"
-
-        self.sth12 = "sin((th1 + th2))"
-        self.sth13 = "sin((th1 + th3))"
-        self.sth23 = "sin((th2 + th3))"
-        self.sth123 = "sin((th1 + th2 + th3))"
-
-        self.cth12 = "cos((th1 + th2))"
-        self.cth13 = "cos((th1 + th3))"
-        self.cth23 = "cos((th2 + th3))"
-        self.cth123 = "cos((th1 + th2 + th3))"
-
         self.acc_string = [
             self.acc[0][0].to_string(),
             self.acc[1][0].to_string(),
             self.acc[2][0].to_string(),
         ]
-        for i in range(3):
-            self.acc_string[i] = self.acc_string[i].replace(self.cth12, "cth12")
-            self.acc_string[i] = self.acc_string[i].replace(self.cth13, "cth13")
-            self.acc_string[i] = self.acc_string[i].replace(self.cth23, "cth23")
-            self.acc_string[i] = self.acc_string[i].replace(self.cth123, "cth123")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth12, "sth12")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth13, "sth13")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth23, "sth23")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth123, "sth123")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth12, "th12")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth13, "th13")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth23, "th23")
-            self.acc_string[i] = self.acc_string[i].replace(self.sth123, "th123")
-
-        self.neg_speed_string = self.neg_speed_string.replace(self.cth12, "cth12")
-        self.neg_speed_string = self.neg_speed_string.replace(self.cth13, "cth13")
-        self.neg_speed_string = self.neg_speed_string.replace(self.cth23, "cth23")
-        self.neg_speed_string = self.neg_speed_string.replace(self.cth123, "cth123")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth12, "sth12")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth13, "sth13")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth23, "sth23")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth123, "sth123")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth12, "th12")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth13, "th13")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth23, "th23")
-        self.neg_speed_string = self.neg_speed_string.replace(self.sth123, "th123")
     
     def EvalExpression(
         self,
@@ -460,7 +430,6 @@ class ArmDynamics:
         Returns:
             The evaluated expressions.
         """
-        print('umba')
         s = ArmState(qv)
 
         if type(s.th1) is Expression:
@@ -478,6 +447,8 @@ class ArmDynamics:
                     self.dth1: dth1,
                     self.dth2: dth2,
                     self.dth3: dth3,
+                    self.tau1: tau1,
+                    self.tau2: tau2,
                 }
             )
 
@@ -490,6 +461,8 @@ class ArmDynamics:
                     self.dth1: s.dth1,
                     self.dth2: s.dth2,
                     self.dth3: s.dth3,
+                    self.tau1: tau1,
+                    self.tau2: tau2,
                 }
             )
 
@@ -501,21 +474,6 @@ class ArmDynamics:
             dth1 = s.dth1
             dth2 = s.dth2
             dth3 = s.dth3
-
-            th12 = eval(self.th12)
-            th13 = eval(self.th13)
-            th23 = eval(self.th23)
-            th123 = eval(self.th123)
-
-            sth12 = eval(self.sth12)
-            sth13 = eval(self.sth13)
-            sth23 = eval(self.sth23)
-            sth123 = eval(self.sth123)
-
-            cth12 = eval(self.cth12)
-            cth13 = eval(self.cth13)
-            cth23 = eval(self.cth23)
-            cth123 = eval(self.cth123)
             return eval(exp.to_string())
 
     def EvalKeypoint(self, keypoint: np.ndarray, qv: np.ndarray) -> np.ndarray:
@@ -560,21 +518,6 @@ class ArmDynamics:
             dth1 = s.dth1
             dth2 = s.dth2
             dth3 = s.dth3
-
-            th12 = eval(self.th12)
-            th13 = eval(self.th13)
-            th23 = eval(self.th23)
-            th123 = eval(self.th123)
-
-            sth12 = eval(self.sth12)
-            sth13 = eval(self.sth13)
-            sth23 = eval(self.sth23)
-            sth123 = eval(self.sth123)
-
-            cth12 = eval(self.cth12)
-            cth13 = eval(self.cth13)
-            cth23 = eval(self.cth23)
-            cth123 = eval(self.cth123)
             neg_speed = eval(self.neg_speed_string)
         return neg_speed
 
@@ -603,7 +546,7 @@ class ArmDynamics:
                 if fast_build:
                     return dqv
                 else:
-                    dqv[3 + i] = self.EvalExpression(self.acc[i][0], tau1, tau2)
+                    dqv[3 + i] = self.EvalExpression(self.acc[i, 0], tau1, tau2)
             dqv[:3] = s[3:]
         else:
             # It's faster to precompute the string of the expression.
@@ -613,21 +556,6 @@ class ArmDynamics:
             dth1 = s.dth1
             dth2 = s.dth2
             dth3 = s.dth3
-
-            th12 = eval(self.th12)
-            th13 = eval(self.th13)
-            th23 = eval(self.th23)
-            th123 = eval(self.th123)
-
-            sth12 = eval(self.sth12)
-            sth13 = eval(self.sth13)
-            sth23 = eval(self.sth23)
-            sth123 = eval(self.sth123)
-
-            cth12 = eval(self.cth12)
-            cth13 = eval(self.cth13)
-            cth23 = eval(self.cth23)
-            cth123 = eval(self.cth123)
 
             for i in range(3):
                 dqv[3 + i] = eval(self.acc_string[i])
@@ -730,4 +658,6 @@ class Arm2DVisualizer(PyPlotVisualizer):
         self.plot(origin, rA)
         self.plot(rA, rB)
         self.plot(rB, rE)
-        self.ax.set_title("t = {:.1f}".format(context.get_time()))
+        self.ax.set_title("t = {:.3f}".format(context.get_time()))
+        self.ax.set_xticks([], [])
+        self.ax.set_yticks([], [])
